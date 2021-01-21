@@ -56,7 +56,7 @@ def insert_event(event: dict)-> str:
       ],
     }
     """
-    recurring_event = service.events().insert(calendarId='primary', body=event).execute()
+    event = service.events().insert(calendarId='primary', body=event).execute()
 
-    return recurring_event['id']
+    return event['id']
 
