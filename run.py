@@ -3,6 +3,9 @@ import pygsheets
 from datetime import datetime, timedelta
 import util_calendar
 
+# Toggle this for using the TEST sheet
+DEBUG = False
+
 
 # Helper Functions
 def create_event_json(series: dict) -> dict:
@@ -35,6 +38,16 @@ def create_event_json(series: dict) -> dict:
         'dateTime': end_date,
         'timeZone': 'GMT' + timezone
       },
+      'reminders': {
+            'useDefault': 'False',
+            # Overrides can be set if and only if useDefault is false.
+            'overrides': [
+                {
+                    'method': 'popup',
+                    'minutes': '10'
+                },
+            ]
+            }
     }
 
     # Generate RRULE standard frequency pattern
@@ -89,6 +102,10 @@ def generate_rrule_pattern(freq_code, end_date=''):
 
 if __name__ == "__main__":
     SHEET_NAME = "STUDY-PLAN"
+
+    if DEBUG is True:
+        SHEET_NAME = "TEST | STUDY-PLAN"
+
     SPREADSHEET_ID = '1GDXzzTD1dBnXWcpjPXqfIjpLwxHtXVQtjwfLhCaZNHA'
 
     gc = pygsheets.authorize(client_secret='creds_google/credentials.json')
@@ -124,8 +141,9 @@ if __name__ == "__main__":
         else:
             if control_action == 'delete':
                 util_calendar.delete_event(event_code)
+                event['Google Calendar Invite Code'] = ""
+                event['Control Action'] = ''
                 print(f"Event : {event['Name']} was deleted")
-                continue
 
             if control_action == 'update':
                 event_bluprnt = create_event_json(event)
