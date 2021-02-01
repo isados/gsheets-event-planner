@@ -1,6 +1,5 @@
 
 from __future__ import print_function
-import datetime
 import pickle
 import os.path
 from googleapiclient.discovery import build
@@ -38,7 +37,7 @@ if not creds or not creds.valid:
 service = build('calendar', 'v3', credentials=creds)
 
 
-def insert_event(event: dict)-> str:
+def insert_event(event: dict) -> str:
     """
     event = {
       'summary': 'Appointment',
@@ -60,26 +59,30 @@ def insert_event(event: dict)-> str:
 
     return event['id']
 
-def delete_event(eventId: str)-> str:
+
+def delete_event(eventId: str) -> str:
     service.events().delete(calendarId='primary', eventId=eventId).execute()
-    
-    
+
+
 def update_event(proposed_event: dict, event_code: str):
-    
+
     changed_fields = []
-    current_event = service.events().get(calendarId='primary', eventId=event_code).execute()
-    
+    current_event = service.events().get(calendarId='primary',
+                                         eventId=event_code).execute()
+
     # Check to see if there is any change
     for field in proposed_event:
         if proposed_event[field] != current_event[field]:
             current_event[field] = proposed_event[field]
             changed_fields.append(f'{field} : {current_event[field]}')
-    
-    
-    # Update the event        
+
+    # Update the event or ignore if there aren't any changes
     if len(changed_fields) > 0:
-        updated_event = service.events().update(calendarId='primary', eventId=event_code, body=current_event).execute()
+        updated_event = service.events().update(calendarId='primary',
+                                                eventId=event_code,
+                                                body=current_event).execute()
         print(f"The event was updated at {updated_event['updated']}")
-        for field in changed_fields: print(field)
+        for field in changed_fields:
+            print(field)
     else:
         print(f"No change to {current_event['summary']} was necessary")
