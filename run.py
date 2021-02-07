@@ -1,5 +1,8 @@
+#!/usr/bin/env python3
 import pandas as pd
 import pygsheets
+import sys
+import os
 from datetime import datetime, timedelta
 import util_calendar
 
@@ -108,7 +111,14 @@ if __name__ == "__main__":
 
     SPREADSHEET_ID = '1GDXzzTD1dBnXWcpjPXqfIjpLwxHtXVQtjwfLhCaZNHA'
 
-    gc = pygsheets.authorize(client_secret='creds_google/credentials.json')
+    # Get real path of executable directory
+    dir_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    creds_dir = os.path.join(dir_name, 'creds_google')
+    secretpath = os.path.join(dir_name, 'creds_google/credentials.json')
+
+    gc = pygsheets.authorize(client_secret=secretpath,
+                             credentials_directory=creds_dir)
 
     workbook = gc.open_by_key(SPREADSHEET_ID)
 
@@ -116,7 +126,7 @@ if __name__ == "__main__":
 
     # Retrieve the data from the sheets
     df = study_sheet.get_as_df(start="A", end="H")
-    # Have an empty to write back to the sheets
+    # Have an empty dataframe to write back to the sheets
     new_df = pd.DataFrame(columns=df.columns)
 
     # Process the table

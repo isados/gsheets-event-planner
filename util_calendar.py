@@ -1,7 +1,7 @@
-
 from __future__ import print_function
 import pickle
 import os.path
+import sys
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -16,8 +16,12 @@ creds = None
 # The file token.pickle stores the user's access and refresh tokens, and is
 # created automatically when the authorization flow completes for the first
 # time.
-calendar_token_loc = 'creds_google/calendar-token.pickle'
-credentials_loc = 'creds_google/credentials.json'
+
+dir_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+calendar_token_loc = os.path.join(dir_name,
+                                  'creds_google/calendar-token.pickle')
+credentials_loc = os.path.join(dir_name, 'creds_google/credentials.json')
 
 if os.path.exists(calendar_token_loc):
     with open(calendar_token_loc, 'rb') as token:
