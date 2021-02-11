@@ -114,11 +114,9 @@ if __name__ == "__main__":
     # Get real path of executable directory
     dir_name = os.path.dirname(os.path.realpath(sys.argv[0]))
 
-    creds_dir = os.path.join(dir_name, 'creds_google')
-    secretpath = os.path.join(dir_name, 'creds_google/credentials.json')
+    secretpath = os.path.join(dir_name, 'creds_google/service_account.json')
 
-    gc = pygsheets.authorize(client_secret=secretpath,
-                             credentials_directory=creds_dir)
+    gc = pygsheets.authorize(service_file=secretpath)
 
     workbook = gc.open_by_key(SPREADSHEET_ID)
 
@@ -136,8 +134,8 @@ if __name__ == "__main__":
         control_action = event['Control Action'].lower()
 
         if event_code == '':
-            mandatory_entries = event[['Name', 'Duration',
-                                      'Time', 'Start Date']]
+            mandatory_entries: pd.DataFrame = event[['Name', 'Duration',
+                                                    'Time', 'Start Date']]
             if (mandatory_entries == "").any():
                 print(f"Fields are missing for {event['Name']}")
             else:
