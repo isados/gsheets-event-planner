@@ -6,8 +6,118 @@ import os
 from datetime import datetime, timedelta
 import util_calendar
 
+import pickle
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from typing import Union
+
 # Toggle this for using the TEST sheet
 DEBUG = False
+
+
+def get_google_cal_handler():
+    # If modifying these scopes, delete the file token.pickle.
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+    """Shows basic usage of the Google Calendar API.
+    Prints the start and name of the next 10 events on the user's calendar.
+    """
+    creds = None
+    # The file token.pickle stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+
+    dir_name = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    calendar_token_loc = os.path.join(dir_name,
+                                      'creds_google/calendar-token.pickle')
+    credentials_loc = os.path.join(dir_name, 'creds_google/credentials.json')
+
+    if os.path.exists(calendar_token_loc):
+        with open(calendar_token_loc, 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                credentials_loc, SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open(calendar_token_loc, 'wb') as token:
+            pickle.dump(creds, token)
+
+    service = build('calendar', 'v3', credentials=creds)
+    return service
+
+
+service = get_google_cal_handler()
+
+
+class ControlAction():
+    def __init__(self, control_type: str, event: Union[dict, pd.Series]):
+        self.control_type = control_type
+        self.event = event
+        self.event_code = event['Google Calendar Invite Code']
+
+    def connect_with_calendar_api(self):
+        raise NotImplementedError
+
+    def update_event(self):
+
+        pass
+        raise NotImplementedError
+
+
+class UpdateControl(ControlAction):
+    def __init__(self, *args):
+        super(ControlAction, self).__init__(*args)
+
+    def connect_with_calendar_api(self):
+        proposed_event = create_event_json(self.event)
+        event_code = self.event_code
+
+        changed_fields = []
+        current_event = service.events().get(calendarId='primary',
+                                             eventId=event_code).execute()
+
+        # Check to see if there is any change
+        for field in proposed_event:
+            if proposed_event[field] != current_event[field]:
+                current_event[field] = proposed_event[field]
+                changed_fields.append(f'{field} : {current_event[field]}')
+
+        # Update the event or ignore if there aren't any changes
+        if len(changed_fields) > 0:
+            updated_event = service.events().update(calendarId='primary',
+                                                    eventId=event_code,
+                                                    body=current_event)
+                                                    .execute()
+            print(f"The event was updated at {updated_event['updated']}")
+            for field in changed_fields:
+                print(field)
+        else:
+            print(f"No change to {current_event['summary']} was necessary")
+
+
+    def update_event(self) -> pd.Series:
+        pass
+
+
+class DeleteControl(ControlAction):
+    def __init__(self, *args):
+        super(ControlAction, self).__init__(*args)
+
+    def connect_with_calendar_api(self):
+        service.events().delete(calendarId='primary',
+                                eventId=self.event_code).execute()
+
+    def update_event(self) -> pd.Series:
+        self.event['Google Calendar Invite Code'] = ""
+        self.event['Control Action'] = ''
+        return self.event
 
 
 # Helper Functions
@@ -130,7 +240,6 @@ if __name__ == "__main__":
     # Process the table
     for index in range(len(df)):
         event = df.loc[index]
-        event_code = event['Google Calendar Invite Code']
         control_action = event['Control Action'].lower()
 
         if event_code == '':
