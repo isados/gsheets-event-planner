@@ -123,7 +123,7 @@ if __name__ == "__main__":
     study_sheet = workbook.worksheet_by_title(SHEET_NAME)
 
     # Retrieve the data from the sheets
-    df = study_sheet.get_as_df(start="A", end="H")
+    df = study_sheet.get_as_df(start="A", end="I")
     # Have an empty dataframe to write back to the sheets
     new_df = pd.DataFrame(columns=df.columns)
 
