@@ -5,11 +5,9 @@ import sys
 import os
 from datetime import datetime, timedelta
 
-import pickle
 from googleapiclient.discovery import build
+from google.oauth2 import service_account
 from googleapiclient.errors import HttpError
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from typing import Union, Callable
 
 # Toggle this for using the TEST sheet
@@ -19,34 +17,11 @@ dict_type = Union[dict, pd.Series, pd.DataFrame]
 
 
 def get_google_cal_handler():
-    # If modifying these scopes, delete the file token.pickle.
+    service_account_file = "creds_google/service_account.json"
     SCOPES = ['https://www.googleapis.com/auth/calendar']
-
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-
-    dir_name = os.path.dirname(os.path.realpath(sys.argv[0]))
-
-    calendar_token_loc = os.path.join(dir_name,
-                                      'creds_google/calendar-token.pickle')
-    credentials_loc = os.path.join(dir_name, 'creds_google/credentials.json')
-
-    if os.path.exists(calendar_token_loc):
-        with open(calendar_token_loc, 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                credentials_loc, SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open(calendar_token_loc, 'wb') as token:
-            pickle.dump(creds, token)
+    creds = service_account.Credentials.\
+        from_service_account_file(service_account_file,
+                                  scopes=SCOPES)
 
     service = build('calendar', 'v3', credentials=creds)
     return service
