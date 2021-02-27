@@ -1,6 +1,7 @@
 import unittest
 from unittest import TestCase
-from run import generate_rrule_pattern
+from pandas import Series
+from run import generate_rrule_pattern, ControlAction
 
 
 class GenerateRrulePatternTests(TestCase):
@@ -24,6 +25,30 @@ class GenerateRrulePatternTests(TestCase):
         real_pattern = "RRULE:FREQ=MONTHLY"
         pattern = generate_rrule_pattern("MONTHLY")
         self.assertEqual(pattern, real_pattern)
+
+
+class MissingEntriesTests(TestCase):
+    """
+    mandatory_entries: "list[str]" = ['Name', 'Duration',
+                                      'Time', 'Start Date']
+    """
+    func = ControlAction._mandatory_entries_missing
+
+    def test_not_missing(self):
+        series = Series({"Name": "Yusuf",
+                         "Duration": "0:05",
+                         "Time": "10pm",
+                         "Start Date": "Not Today"
+                         })
+        self.assertEqual(self.func(series), False)
+
+    def test_name_missing(self):
+        series = Series({"Name": "",
+                         "Duration": "0:05",
+                         "Time": "10pm",
+                         "Start Date": "Not Today"
+                         })
+        self.assertEqual(self.func(series), True)
 
 
 if __name__ == "__main__":

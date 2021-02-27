@@ -4,25 +4,24 @@ import pygsheets
 import sys
 import os
 from datetime import datetime, timedelta
-import util_calendar
 
 import pickle
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-from typing import Union
+from typing import Union, Callable
 
 # Toggle this for using the TEST sheet
 DEBUG = False
+
+dict_type = Union[dict, pd.Series, pd.DataFrame]
 
 
 def get_google_cal_handler():
     # If modifying these scopes, delete the file token.pickle.
     SCOPES = ['https://www.googleapis.com/auth/calendar']
 
-    """Shows basic usage of the Google Calendar API.
-    Prints the start and name of the next 10 events on the user's calendar.
-    """
     creds = None
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
@@ -56,68 +55,140 @@ def get_google_cal_handler():
 service = get_google_cal_handler()
 
 
-class ControlAction():
-    def __init__(self, control_type: str, event: Union[dict, pd.Series]):
-        self.control_type = control_type
-        self.event = event
-        self.event_code = event['Google Calendar Invite Code']
+class GoogleEvent():
+    mandatory_entries: "list[str]" = ['Name', 'Duration',
+                                      'Time', 'Start Date']
 
-    def connect_with_calendar_api(self):
-        raise NotImplementedError
+    def __init__(self, event: dict_type):
+        self.event: pd.Series = event
+        self.event_code: str = self.event['Google Calendar Invite Code']
+        self.event_name = event['Name']
+        self.action: str = str(event['Control Action']).strip()
+        self.event['Control Action'] = ''
+
+    def execute(self) -> dict_type:
+        # Match to the right control action
+        control_action_to_funcs: "dict[str,Callable]" = {
+            "create": self.create_event,
+            "update": self.update_event,
+            "delete": self.delete_event,
+
+        }
+
+        func = control_action_to_funcs.get(self.action)
+        if func is not None:
+            func()
+
+        return self.event
+
+    def create_event(self):
+
+        if self.event_code != '':
+            print(f"Event '{self.event_name}' already scheduled")
+            # It will return the same event, though not Nonetype as originally
+            # conceived
+            return self.event
+
+        event_bluprnt: dict = create_event_json(self.event)
+        print(event_bluprnt)
+
+        """
+        event = {
+        'summary': 'Appointment',
+        'location': 'Somewhere',
+        'start': {
+            'dateTime': '2021-01-20T10:00:00.000',
+            'timeZone': 'GMT+3:00'
+        },
+        'end': {
+            'dateTime': '2021-01-20T10:25:00.000',
+            'timeZone': 'GMT+3:00'
+        },
+        'recurrence': [
+            'RRULE:FREQ=DAILY;UNTIL=20210122T235959Z',
+        ],
+        }
+        """
+        updated_event = service.events().insert(calendarId='primary',
+                                                body=event_bluprnt)
+        updated_event = updated_event.execute()
+        self.event['Google Calendar Invite Code'] = updated_event['id']
 
     def update_event(self):
 
-        pass
-        raise NotImplementedError
+        if self.event_code == '':
+            print(f"Can't update Event '{self.event_name}'."
+                  "It doesn't seem to be scheduled!")
+            return None
 
-
-class UpdateControl(ControlAction):
-    def __init__(self, *args):
-        super(ControlAction, self).__init__(*args)
-
-    def connect_with_calendar_api(self):
         proposed_event = create_event_json(self.event)
         event_code = self.event_code
 
-        changed_fields = []
+        # Get the last updated event
         current_event = service.events().get(calendarId='primary',
                                              eventId=event_code).execute()
 
-        # Check to see if there is any change
-        for field in proposed_event:
-            if proposed_event[field] != current_event[field]:
-                current_event[field] = proposed_event[field]
-                changed_fields.append(f'{field} : {current_event[field]}')
+        # Compare both events
+        diffkeys = [k for k in proposed_event
+                    if proposed_event[k] != current_event[k]]
 
-        # Update the event or ignore if there aren't any changes
-        if len(changed_fields) > 0:
+        if len(diffkeys) > 0:
+            # Update the dict object
+            current_event.update(proposed_event)
             updated_event = service.events().update(calendarId='primary',
                                                     eventId=event_code,
                                                     body=current_event)
-                                                    .execute()
+            # Not to be confused for this class's bound method `execute`
+            updated_event = updated_event.execute()
+
             print(f"The event was updated at {updated_event['updated']}")
-            for field in changed_fields:
-                print(field)
+
+            for k in diffkeys:
+                print(f"Field {k}: {current_event[k]}")
         else:
             print(f"No change to {current_event['summary']} was necessary")
 
+    def delete_event(self):
 
-    def update_event(self) -> pd.Series:
-        pass
+        if self.event_code == '':
+            print(f"Can't delete Event '{self.event_name}'."
+                  "It doesn't seem to be scheduled!")
+            return None
 
+        try:
+            service.events().delete(calendarId='primary',
+                                    eventId=self.event_code).execute()
+        except HttpError as e:
+            print(e)
+            error = e.__getattribute__("error_details")
+            print(f"Event '{self.event_name}: {error}'")
 
-class DeleteControl(ControlAction):
-    def __init__(self, *args):
-        super(ControlAction, self).__init__(*args)
+            if error == "Resource has been deleted":
+                # Get rid of the invite code
+                self.event['Google Calendar Invite Code'] = ""
+        else:
+            print(f"Event {self.event_name} DELETED")
+            self.event['Google Calendar Invite Code'] = ""
 
-    def connect_with_calendar_api(self):
-        service.events().delete(calendarId='primary',
-                                eventId=self.event_code).execute()
+    @classmethod
+    def _mandatory_entries_missing(cls, event: dict_type) -> bool:
+        missing: pd.Series = (event[cls.mandatory_entries] == '')
+        return bool(missing.any())
 
-    def update_event(self) -> pd.Series:
-        self.event['Google Calendar Invite Code'] = ""
-        self.event['Control Action'] = ''
-        return self.event
+    # Factory Method
+    @classmethod
+    def from_series(cls, event: dict_type):
+        event_name = event['Name']
+
+        if pd.Series(event == "").all():
+            return None
+
+        # check for missing entries
+        if cls._mandatory_entries_missing(event) is True:
+            print(f"Fields are missing for '{event_name}'")
+            return None
+
+        return cls(event)
 
 
 # Helper Functions
@@ -152,12 +223,12 @@ def create_event_json(series: dict) -> dict:
         'timeZone': 'GMT' + timezone
       },
       'reminders': {
-            'useDefault': 'False',
+            'useDefault': False,
             # Overrides can be set if and only if useDefault is false.
             'overrides': [
                 {
                     'method': 'popup',
-                    'minutes': '10'
+                    'minutes': 10
                 },
             ]
             }
@@ -169,12 +240,6 @@ def create_event_json(series: dict) -> dict:
         event_bluprnt['recurrence'] = [rrule]
 
     return event_bluprnt
-
-
-def initiate_event(event_bluprnt):
-    # Pubish the event
-    cal_code = util_calendar.insert_event(event_bluprnt)
-    return cal_code
 
 
 def generate_rrule_pattern(freq_code, end_date=''):
@@ -239,40 +304,12 @@ if __name__ == "__main__":
 
     # Process the table
     for index in range(len(df)):
-        event = df.loc[index]
-        control_action = event['Control Action'].lower()
-
-        if event_code == '':
-            mandatory_entries: pd.DataFrame = event[['Name', 'Duration',
-                                                    'Time', 'Start Date']]
-            if (mandatory_entries == "").any():
-                print(f"Fields are missing for {event['Name']}")
-            else:
-                # Create Event
-                event_bluprnt = create_event_json(event)
-                print(event_bluprnt)
-                event_code = initiate_event(event_bluprnt)
-
-                event['Google Calendar Invite Code'] = event_code
-
-        else:
-            if control_action == 'delete':
-                util_calendar.delete_event(event_code)
-                event['Google Calendar Invite Code'] = ""
-                event['Control Action'] = ''
-                print(f"Event : {event['Name']} was deleted")
-
-            if control_action == 'update':
-                event_bluprnt = create_event_json(event)
-                util_calendar.update_event(event_bluprnt, event_code)
-                event['Control Action'] = ''
-
-        new_df = new_df.append(event, ignore_index=True)
-
-    # Retain the size of the dataframe as the old one.
-    for _ in range(0, len(df)-len(new_df)):
-        new_df = new_df.append(pd.Series(), ignore_index=True)
-        new_df.iloc[-1] = ""
+        row = df.loc[index]
+        event = GoogleEvent.from_series(row)
+        if event is not None:
+            # Process according to its control action
+            row = event.execute()
+        new_df = new_df.append(row, ignore_index=True)
 
     # Write back to the sheet
     study_sheet.set_dataframe(new_df, start='A2', copy_head=False)
