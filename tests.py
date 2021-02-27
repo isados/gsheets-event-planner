@@ -1,7 +1,7 @@
 import unittest
 from unittest import TestCase
 from pandas import Series
-from run import generate_rrule_pattern, ControlAction
+from run import generate_rrule_pattern, GoogleEvent
 
 
 class GenerateRrulePatternTests(TestCase):
@@ -32,7 +32,7 @@ class MissingEntriesTests(TestCase):
     mandatory_entries: "list[str]" = ['Name', 'Duration',
                                       'Time', 'Start Date']
     """
-    func = ControlAction._mandatory_entries_missing
+    func = GoogleEvent._mandatory_entries_missing
 
     def test_not_missing(self):
         series = Series({"Name": "Yusuf",
